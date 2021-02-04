@@ -1,0 +1,39 @@
+{
+  "name": "logger",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Josh-Labs/loggdem.git"
+  },
+  "keywords": [
+    "Node js logger",
+    "Logger",
+    "loggdem",
+    "pino alternative",
+    "winston alternative",
+    "flexible logger",
+    "customizable logger"
+  ],
+  "author": "Oladokun joshua",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Josh-Labs/loggdem/issues"
+  },
+  "homepage": "https://github.com/Josh-Labs/loggdem#readme",
+  "dependencies": {
+    "bullmq": "^1.14.2",
+    "chalk": "^4.1.0",
+    "got": "^11.8.1",
+    "json-colorizer": "^2.2.2",
+    "moment": "^2.29.1",
+    "node-emoji": "^1.10.0",
+    "stack-trace": "0.0.10",
+    "table": "^6.0.7",
+    "validator": "^13.5.2"
+  }
+}
