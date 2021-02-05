@@ -1,6 +1,4 @@
-//@ts-nocheck
-import chalk from "chalk";
-import { isString } from "lodash";
+////@ts-nocheck
 import moment from "moment";
 import { emojify } from "node-emoji";
 import { table } from "table";
@@ -8,94 +6,92 @@ import { isObject, isString } from "lodash"
 import { loggdemConfig } from "./interface";
 import { getLocation } from "./location";
 import colorize from 'json-colorizer';
+import { boldify, checkColor, colorfy, filterArray, jsonify } from "./utils";
 
 export class loggdem {
   constructor() {
     this.createLevel('info',
       {
-        color: 'royalblue', useTable: true, dateFormat: '', transports: {
-          file: {
-            path: '',
-            tables: true
-          },
-          http: {
-            url: '',
-            encrypt: true
-          },
+        color: 'royalblue', useTable: true, dateFormat: '',
+        transports: {
+          // file: {
+          //   json: true,
+          //   html: true,
+          //   txt: true,
+          //   csv: true
+          // },
+          // http: true,
           console: true
         },
       },
-      (e) => this.configHandler(e, 'info', null))
+      (e, g) => this.configHandler(e, 'info', g))
     this.createLevel('error',
       {
         color: 'red',
         useTable: true,
-
         transports: {
-          file: {
-            path: '',
-            tables: true
-          },
-          http: {
-            url: '',
-            encrypt: true
-          },
+          //file: true,
+          //  http: true,
           console: true
         },
       },
-      (e) => this.configHandler(e, 'error', null)
+      (e, g) => this.configHandler(e, 'error', g)
     )
     this.createLevel('debug',
       {
         color: 'orange',
         useTable: true,
-
         transports: {
-          file: {
-            path: '',
-            tables: true
-          },
-          http: {
-            url: '',
-            encrypt: true
-          },
+          //file: true,
+          //  http: true,
           console: true
         },
       },
-      (e) => this.configHandler(e, 'debug', null)
-
-
+      (e, g) => this.configHandler(e, 'debug', g)
     )
     this.createLevel('fatal',
       {
         color: 'red',
         useTable: true,
-
         transports: {
-          file: {
-            path: '',
-            tables: true
-          },
-          http: {
-            url: '',
-            encrypt: true
-          },
+          //file: true,
+          //  http: true,
           console: true
         },
       },
-      (e) => {
-        this.configHandler(e, 'error', null)
-        return process.exit(1)
+      (e, g) => {
+        this.configHandler(e, 'fatal', g)
       }
     )
     this.createTransport('console',
-      { level: ['error', 'info',], defaultLevel: 'info' },
+      { level: [{ type: 'info', cb: (e, f, g) => console.log('ee', e, 'ff', f, 'gg', g) }], defaultLevel: 'info' },
+      (e, f, g, h) => this.consoleHandler(e, f, g, h)
+    )
+    this.createTransport('file',
+      {
+        level: ['info',],
+        defaultLevel: 'info',
+        baseDir: 'logFiles',
+        path: '',
+        json: {
+          folderName: 'jsonlog'
+        },
+        html: {
+          folderName: 'htmlLog'
+        },
+        txt: {
+          folderName: 'txtlog'
+        },
+        csv: {
+          folderName: 'csvLog'
+        }
+      },
       (e, f, g, h) => this.consoleHandler(e, f, g, h)
     )
   }
   private config: loggdemConfig[] = []
   private transports = []
-  createLevel(name: string, config?: loggdemConfig, cb: (e: any, g: any) => void = (e, g) => this.configHandler(e, arguments[0], g)) {
+  createLevel(name: string, config?: loggdemConfig, cb: (msg: any, filter: object) => void = (msg, filter) => this.configHandler(msg, arguments[0], filter)) {
     let cfg: loggdemConfig
     //@ts-ignore
     if (config && typeof config !== 'object') {
@@ -119,7 +115,7 @@ export class loggdem {
     }
     this.config.push(cfg)
   }
-  setLevel(name: string, config?: loggdemConfig, cb: (e: any, g: any) => void = (e, g) => this.configHandler(e, arguments[0], g)) {
+  setLevel(name: string, config?: loggdemConfig, cb: (msg: any, filter: object) => void = (msg, filter) => this.configHandler(msg, arguments[0], filter)) {
     let cfg: loggdemConfig
     //@ts-ignore
     if (config && typeof config !== 'object') {
@@ -142,10 +138,10 @@ export class loggdem {
     }
     this.config.push(cfg)
   }
-  createTransport(name: string, config?: object | Array<object>, cb: (e: any, f: any, g: any) => any = (e, f, g) => { }) {
-    let cfg: { level: string[]; default: string; }, transP: {}
+  createTransport(name: string, config?: object | Array<object>, cb: (msg: any, LevelConfigs: any, TransportConfig: any, TransportName: string) => any = (msg, LevelConfigs, TransportConfig, TransportName) => { }) {
+    let cfg: { level: string[]; defaultLevel: string; TransportName?: string }, transP: object
     let cfgArray = []
-    cfg = { level: ['info'], }
+    cfg = { level: ['info', 'error', 'fatal', 'debug'], defaultLevel: 'info' }
     transP = {}
     if (Array.isArray(config)) {
       cfgArray = Array.from(config)
@@ -157,9 +153,6 @@ export class loggdem {
       throw new Error('Config must be an Array or Object')
     }
 
-    let defFunc = (e: any, f: any, g: any) => {
-      console.log(e, f, g)
-    }
     if (!cb || typeof cb !== 'function') {
       throw new Error('Callback must be a function')
     }
@@ -167,7 +160,7 @@ export class loggdem {
 
     Object.defineProperties(transP, {
       name: { value: name, configurable: true, enumerable: true, writable: true },
-      cb: { value: cb || defFunc, configurable: true, enumerable: true, writable: true },
+      cb: { value: cb, configurable: true, enumerable: true, writable: true },
       config: { value: cfgArray, configurable: true, enumerable: true, writable: true },
     })
 
@@ -181,22 +174,19 @@ export class loggdem {
 
 
   }
-  setTransport(name: string, config?: object | Array<object>, cb: (e: any, f: any, g: any) => any = (e, f, g, h) => this.consoleHandler(e, f, g, h)) {
-    let cfg: { level: string[]; default: string; }, transP: {}
+  setTransport(name: string, config?: object | Array<object>, cb: (e: any, f: any, g: any, h: any) => any = (e, f, g, h) => this.consoleHandler(e, f, g, h)) {
+    let cfg: { level: string[]; defaultLevel: string; TransportName?: string }, transP: object
     let cfgArray = []
-    cfg = { level: ['info'], defaultLevel: 'info' }
+    cfg = { level: ['info', 'error', 'fatal', 'debug'], defaultLevel: 'info' }
     transP = {}
     if (Array.isArray(config)) {
       cfgArray = Array.from(config)
     } else if (isObject(config)) {
       Object.assign(cfg, config)
+      cfg.TransportName = name
       cfgArray.push(cfg)
     } else {
       throw new Error('Config must be an Array or Object')
-    }
-
-    let defFunc = (e: any, f: any, g: any) => {
-      console.log(e, f, g)
     }
     if (!cb || typeof cb !== 'function') {
       throw new Error('Callback must be a function')
@@ -205,7 +195,7 @@ export class loggdem {
 
     Object.defineProperties(transP, {
       name: { value: name, configurable: true, enumerable: true, writable: true },
-      cb: { value: cb || defFunc, configurable: true, enumerable: true, writable: true },
+      cb: { value: cb, configurable: true, enumerable: true, writable: true },
       config: { value: cfgArray, configurable: true, enumerable: true, writable: true },
     })
 
@@ -226,18 +216,27 @@ export class loggdem {
   }
   private tranportHandler(name: string, msg: any, filter: any) {
     let tC = this.getTransport(name)
-    let filtered = filter ? this.filterArray(tC.config, filter) : tC.config
-    tC['cb'].apply(this, [msg, this.getConfig(), filtered])
-  }
-  private filterArray(array: any[], filters: { [x: string]: (arg0: any) => unknown; }) {
-    const filterKeys = Object.keys(filters);
-    return array.filter((item: { [x: string]: any; }) => {
-      return filterKeys.every(key => {
+    let filtered = filter ? filterArray(tC.config, filter) : tC.config
+    let levelAndfunc = filtered.map(x => x.level).flat()
+    //@ts-ignore
+    let typeMap = levelAndfunc.map(x => isObject(x) ? x.type : isString(x) ? x : '')
+    typeMap = Array.from(new Set(typeMap))
+    //@ts-ignore
+    let allowedConfig = this.getConfig().filter(x => typeMap.includes(x.level))
+    if (levelAndfunc.length > 0) {
+      for (let i = 0; i < levelAndfunc.length; i++) {
+        const elem = levelAndfunc[i];
+        //@ts-ignore
+        if (elem && isObject(elem) && elem.type && elem.cb && allowedConfig.length > 0) {
+          elem['cb'].apply(this, [msg, allowedConfig[0], filtered, tC.name])
+        } else if (elem && isString(elem) && this.getConfig(elem)) {
+          tC['cb'].apply(this, [msg, this.getConfig(elem), filtered, tC.name])
+        }
+      }
+    }
 
-        if (typeof filters[key] !== 'function') return true;
-        return filters[key](item[key]);
-      });
-    });
+
+
   }
   public getConfig(level?: string) {
     return level && isString(level) ? this.config.find(x => x.level == level) : this.config
@@ -253,104 +252,49 @@ export class loggdem {
     let f: string | string[]
     //@ts-ignore
     if (filter && filter.exclude && Array.isArray(filter.exclude)) {
+      //@ts-ignore
       f = filter.exclude
     } else {
       f = []
     }
     for (const [key, value] of Object.entries(transP)) {
       if (key && value !== false) {
-        this.transports.forEach(o => {
-          if (o && o.name == key && value !== false && f.includes(key) == false) {
-            o['cb'].apply(this, [e, t, o.config, o.name])
+        for (let i = 0; i < this.transports.length; i++) {
+          const o = this.transports[i];
+          if (o && o.name == key && value !== false && !f.includes(key)) {
+            let b = o.config.map(x => x.level).flat()
+            if (b.length > 0) {
+              for (let i = 0; i < b.length; i++) {
+                const elem = b[i];
+                // console.log('elem', elem)
+                //@ts-ignore
+                if (elem && isObject(elem) && elem.type && elem.cb && t) {
+                  elem['cb'].apply(this, [e, t, o.config, o.name])
+                } else if (elem && isString(elem) && this.getConfig(elem)) {
+                  console.log('hello')
+                  o['cb'].apply(this, [e, t, o.config, o.name])
+                }
+              }
+            }
+
+
           }
-        })
+        }
       }
     }
     return
-  }
-  private methods(method: string, message: string) {
-    let useMethod
-    let supportedMethods = ['log', 'info', 'error', 'debug']
-    let isSupported = supportedMethods.find(x => x == method)
-    if (isSupported) {
-      useMethod = isSupported
-    } else useMethod = 'info'
-    return this[`console${useMethod}`](message)
-  }
-  private consolelog(message: string) {
-    console.log(message);
-  }
-  private consoleinfo(message: string) {
-    console.info(message)
-  }
-  private consoleerror(message: string) {
-    console.error(message)
-  }
-  private consoledebug(message: string) {
-    console.debug(message)
-  }
-  private static jsonify: (obj: object) => string = (obj: object) => {
-    if (obj) {
-      return JSON.stringify(obj, null, 2)
-    }
   }
   private consoleHandler(e: any, f: any, config: any, transportName: string) {
     let dL: any
     let Lconfig = []
     let Co: string | any[]
-    const boldify: (text: string) => string = (text: string) => {
-      if (text) {
-        return chalk['bold'](text)
-      }
-    }
-    const convertColor: (colour: string) => string = (colour: any) => {
-      var colours = {
-        "aliceblue": "#f0f8ff", "antiquewhite": "#faebd7", "aqua": "#00ffff", "aquamarine": "#7fffd4", "azure": "#f0ffff",
-        "beige": "#f5f5dc", "bisque": "#ffe4c4", "black": "#000000", "blanchedalmond": "#ffebcd", "blue": "#0000ff", "blueviolet": "#8a2be2", "brown": "#a52a2a", "burlywood": "#deb887",
-        "cadetblue": "#5f9ea0", "chartreuse": "#7fff00", "chocolate": "#d2691e", "coral": "#ff7f50", "cornflowerblue": "#6495ed", "cornsilk": "#fff8dc", "crimson": "#dc143c", "cyan": "#00ffff",
-        "darkblue": "#00008b", "darkcyan": "#008b8b", "darkgoldenrod": "#b8860b", "darkgray": "#a9a9a9", "darkgreen": "#006400", "darkkhaki": "#bdb76b", "darkmagenta": "#8b008b", "darkolivegreen": "#556b2f",
-        "darkorange": "#ff8c00", "darkorchid": "#9932cc", "darkred": "#8b0000", "darksalmon": "#e9967a", "darkseagreen": "#8fbc8f", "darkslateblue": "#483d8b", "darkslategray": "#2f4f4f", "darkturquoise": "#00ced1",
-        "darkviolet": "#9400d3", "deeppink": "#ff1493", "deepskyblue": "#00bfff", "dimgray": "#696969", "dodgerblue": "#1e90ff",
-        "firebrick": "#b22222", "floralwhite": "#fffaf0", "forestgreen": "#228b22", "fuchsia": "#ff00ff",
-        "gainsboro": "#dcdcdc", "ghostwhite": "#f8f8ff", "gold": "#ffd700", "goldenrod": "#daa520", "gray": "#808080", "green": "#008000", "greenyellow": "#adff2f",
-        "honeydew": "#f0fff0", "hotpink": "#ff69b4",
-        "indianred ": "#cd5c5c", "indigo": "#4b0082", "ivory": "#fffff0", "khaki": "#f0e68c",
-        "lavender": "#e6e6fa", "lavenderblush": "#fff0f5", "lawngreen": "#7cfc00", "lemonchiffon": "#fffacd", "lightblue": "#add8e6", "lightcoral": "#f08080", "lightcyan": "#e0ffff", "lightgoldenrodyellow": "#fafad2",
-        "lightgrey": "#d3d3d3", "lightgreen": "#90ee90", "lightpink": "#ffb6c1", "lightsalmon": "#ffa07a", "lightseagreen": "#20b2aa", "lightskyblue": "#87cefa", "lightslategray": "#778899", "lightsteelblue": "#b0c4de",
-        "lightyellow": "#ffffe0", "lime": "#00ff00", "limegreen": "#32cd32", "linen": "#faf0e6",
-        "magenta": "#ff00ff", "maroon": "#800000", "mediumaquamarine": "#66cdaa", "mediumblue": "#0000cd", "mediumorchid": "#ba55d3", "mediumpurple": "#9370d8", "mediumseagreen": "#3cb371", "mediumslateblue": "#7b68ee",
-        "mediumspringgreen": "#00fa9a", "mediumturquoise": "#48d1cc", "mediumvioletred": "#c71585", "midnightblue": "#191970", "mintcream": "#f5fffa", "mistyrose": "#ffe4e1", "moccasin": "#ffe4b5",
-        "navajowhite": "#ffdead", "navy": "#000080",
-        "oldlace": "#fdf5e6", "olive": "#808000", "olivedrab": "#6b8e23", "orange": "#ffa500", "orangered": "#ff4500", "orchid": "#da70d6",
-        "palegoldenrod": "#eee8aa", "palegreen": "#98fb98", "paleturquoise": "#afeeee", "palevioletred": "#d87093", "papayawhip": "#ffefd5", "peachpuff": "#ffdab9", "peru": "#cd853f", "pink": "#ffc0cb", "plum": "#dda0dd", "powderblue": "#b0e0e6", "purple": "#800080",
-        "rebeccapurple": "#663399", "red": "#ff0000", "rosybrown": "#bc8f8f", "royalblue": "#4169e1",
-        "saddlebrown": "#8b4513", "salmon": "#fa8072", "sandybrown": "#f4a460", "seagreen": "#2e8b57", "seashell": "#fff5ee", "sienna": "#a0522d", "silver": "#c0c0c0", "skyblue": "#87ceeb", "slateblue": "#6a5acd", "slategray": "#708090", "snow": "#fffafa", "springgreen": "#00ff7f", "steelblue": "#4682b4",
-        "tan": "#d2b48c", "teal": "#008080", "thistle": "#d8bfd8", "tomato": "#ff6347", "turquoise": "#40e0d0",
-        "violet": "#ee82ee",
-        "wheat": "#f5deb3", "white": "#ffffff", "whitesmoke": "#f5f5f5",
-        "yellow": "#ffff00", "yellowgreen": "#9acd32"
-      };
+    let typeMap, allowedConfig
+    let combined: any = {}
 
-      if (typeof colours[colour.toLowerCase()] != 'undefined' || typeof colours[colour.toLowerCase()] != undefined)
-        return colours[colour.toLowerCase()];
+    console.log('e', e)
+    console.log('f', f)
+    console.log('config', config)
 
-      return false;
-    }
-    const checkColor: (colour: string) => string = (colour: any) => {
-      let co: string
-      let isHexColor1 = /^#[0-9A-F]{6}$/i.test(e)
-      let isHexColor2 = /^#([0-9A-F]{3}){1,2}$/i.test(e)
-
-      if (colour) {
-        if (isHexColor1 == true || isHexColor2 == true) {
-          co = colour
-        } else if (convertColor(colour)) {
-          co = convertColor(colour)
-        } else co = convertColor('white')
-      }
-
-      return co
-    }
     function manageConfig(objj: { useTable: any; level: any; color: any; tableProperties: any; dateFormat: any; }) {
       const { useTable, level, color, tableProperties, dateFormat } = objj
       let onMissing = function (name: any) {
@@ -358,11 +302,10 @@ export class loggdem {
       }
       e = emojify(e, onMissing)
       var output: string
-      var locationN: string
       if (useTable && useTable == true) {
         let data = [
           [boldify('level'), boldify('Message'), boldify('Source'), boldify('Date')],
-          [chalk.hex(checkColor(color)).bold(level.toUpperCase()), e, getLocation(), moment().format(dateFormat)]
+          [colorfy(level.toUpperCase(), color), e, getLocation(), moment().format(dateFormat)],
         ]
         let tableConfig = {
           columns: {
@@ -390,7 +333,7 @@ export class loggdem {
           Location: getLocation(),
           Date: moment().format(dateFormat)
         }
-        let j = loggdem.jsonify(outp)
+        let j = jsonify(outp)
         let r = colorize(j, {
           colors: {
             // STRING_KEY: color,
@@ -403,6 +346,14 @@ export class loggdem {
       return output
 
     }
+
+
+  }
+  private fileHandler(e: any, f: any, config: any, transportName, transportNameConfig) {
+    let dL: any
+    let Lconfig = []
+    let Co: string | any[]
+
     if (Array.isArray(config) && config) {
       Co = config.map(x => x.level).flat()
       if (Co.length > 0 && Array.isArray(f)) {
@@ -416,33 +367,21 @@ export class loggdem {
         Lconfig.push(this.getConfig('info'))
       }
     }
-    if (Lconfig.length == 1) {
-      let a = Lconfig[0]
-      this.methods(a.level, manageConfig(a))
-    } else {
-      let infoConfig = Lconfig.find(x => x.level == 'info')
-      let errConfig = Lconfig.find(x => x.level == 'error')
-      let debugConfig = Lconfig.find(x => x.level == 'debug')
-      let fatalConfig = Lconfig.find(x => x.level == 'fatal')
-      if (infoConfig) {
-        let m = manageConfig(infoConfig)
-        this.methods('info', m)
-      } if (errConfig) {
-        let m = manageConfig(errConfig)
-        this.methods('info', m)
-      } if (debugConfig) {
-        let m = manageConfig(debugConfig)
-        this.methods('info', m)
-      } if (fatalConfig) {
-        let m = manageConfig(fatalConfig)
-        this.methods('error', m)
+    function manageConfig(objj: { useTable: any; level: any; color: any; tableProperties: any; dateFormat: any; }) {
+      const { useTable, level, color, tableProperties, dateFormat } = objj
+      let onMissing = function (name: any) {
+        return name;
       }
-      // this.methods('log', manageConfig(infoConfig))
+      e = emojify(e, onMissing)
+      let outp = {
+        LEVEL: level.toUpperCase(),
+        Message: e,
+        Location: getLocation(),
+        Date: moment().format(dateFormat)
+      }
 
+      return { outp }
 
     }
-  }
-  private fileHandler(e: any, config: any) {
-
   }
 }

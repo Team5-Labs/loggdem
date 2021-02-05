@@ -1,14 +1,16 @@
 {
   "name": "logger",
   "version": "1.0.0",
-  "description": "",
+  "description": "Fast and customizable logging tool for nodejs Topics",
   "main": "index.js",
   "scripts": {
+    "start": "ts-node-dev --respawn --cls app.ts",
+    "debug": "export DEBUG=* && npm start",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Josh-Labs/loggdem.git"
+    "url": "git+https://github.com/Team5-labs/loggdem.git"
   },
   "keywords": [
     "Node js logger",
@@ -22,18 +24,29 @@
   "author": "Oladokun joshua",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/Josh-Labs/loggdem/issues"
+    "url": "https://github.com/Team5-labs/loggdem/issues"
   },
-  "homepage": "https://github.com/Josh-Labs/loggdem#readme",
+  "homepage": "https://github.com/Team5-labs/loggdem#readme",
   "dependencies": {
     "bullmq": "^1.14.2",
     "chalk": "^4.1.0",
+    "fs-extra": "^9.1.0",
     "got": "^11.8.1",
     "json-colorizer": "^2.2.2",
+    "jsonfile": "^6.1.0",
     "moment": "^2.29.1",
     "node-emoji": "^1.10.0",
     "stack-trace": "0.0.10",
     "table": "^6.0.7",
     "validator": "^13.5.2"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^9.0.6",
+    "@types/jsonfile": "^6.0.0",
+    "@types/lodash": "^4.14.168",
+    "source-map-support": "^0.5.19",
+    "ts-node-dev": "^1.1.1",
+    "tslint": "^6.1.3",
+    "typescript": "^4.1.3"
   }
 }
