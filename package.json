@@ -30,9 +30,11 @@
   "dependencies": {
     "bullmq": "^1.14.2",
     "chalk": "^4.1.0",
+    "console-table-printer": "^2.7.5",
     "fs-extra": "^9.1.0",
     "got": "^11.8.1",
     "json-colorizer": "^2.2.2",
+    "json2csv": "^5.0.6",
     "jsonfile": "^6.1.0",
     "moment": "^2.29.1",
     "node-emoji": "^1.10.0",
@@ -42,6 +44,7 @@
   },
   "devDependencies": {
     "@types/fs-extra": "^9.0.6",
+    "@types/json2csv": "^5.0.1",
     "@types/jsonfile": "^6.0.0",
     "@types/lodash": "^4.14.168",
     "source-map-support": "^0.5.19",

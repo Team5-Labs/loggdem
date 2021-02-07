@@ -212,18 +212,20 @@ let logger = new loggdem()
 
 // 
 
-logger.info('Josh')
+// logger.info('Josh', { exclude: ['console'] })
 
-// logger.debug('This is a debug', { exclude: ['consoles'] })
-
-// logger.fatal('This is fatal')
-
-// logger.$console('this is from the console')
+// // logger.debug('This is a debug', { exclude: ['consoles'] })
+//logger.info('This is fatalThis is faatal')
+// logger.info('This is fatal2')
+logger.info('info2',)
+// process.exit()
+// logger.$file('this is only to the file')
+logger.$console('this is only to the file 2')
 
 // // console.log('lo', logger)
-// logger.createLevel('debugs', { color: 'yellow', useTable: false },)
+logger.createLevel('debugs', { color: '', useTable: true, transports: { file: true, console: true } },)
 
 // // 
 // // logger.debug('hello', { exclude: ['console'] })
 // 
-// logger.debugs('hello',)
+logger.debugs('hellohjjsssss',)

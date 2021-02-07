@@ -6,7 +6,12 @@ import { isObject, isString } from "lodash"
 import { loggdemConfig } from "./interface";
 import { getLocation } from "./location";
 import colorize from 'json-colorizer';
+import * as jsonfile from 'jsonfile'
+import * as path from 'path'
+import fs from 'fs-extra'
 import { boldify, checkColor, colorfy, filterArray, jsonify } from "./utils";
+import { AsyncParser, parseAsync } from "json2csv";
+import { Table } from "console-table-printer";
 
 export class loggdem {
   constructor() {
@@ -14,13 +19,9 @@ export class loggdem {
       {
         color: 'royalblue', useTable: true, dateFormat: '',
         transports: {
-          // file: {
-          //   json: true,
-          //   html: true,
-          //   txt: true,
-          //   csv: true
-          // },
-          // http: true,
+          //http: true,
+          //@ts-ignore
+          file: true,
           console: true
         },
       },
@@ -54,7 +55,8 @@ export class loggdem {
         color: 'red',
         useTable: true,
         transports: {
-          //file: true,
+          //@ts-ignore
+          file: true,
           //  http: true,
           console: true
         },
@@ -64,33 +66,37 @@ export class loggdem {
       }
     )
     this.createTransport('console',
-      { level: [{ type: 'info', cb: (e, f, g) => console.log('ee', e, 'ff', f, 'gg', g) }], defaultLevel: 'info' },
+      {
+        level: [{
+          type: 'info',
+          after: (name, type, res) => console.log('after', `${name} has finished with\n${type}`),
+          cb: (e, f, g, h) => this.consoleHandler(e, f, g, h)
+        }, 'debugs', 'fatal'],
+        defaultLevel: 'info',
+        after: {
+          debug: (name, type, res) => console.log('after2', `${name} has finished with\n${type}`),
+        },
+      },
       (e, f, g, h) => this.consoleHandler(e, f, g, h)
     )
     this.createTransport('file',
       {
-        level: ['info',],
+        level: ['info', 'debugs'],
         defaultLevel: 'info',
-        baseDir: 'logFiles',
-        path: '',
-        json: {
-          folderName: 'jsonlog'
-        },
-        html: {
-          folderName: 'htmlLog'
-        },
-        txt: {
-          folderName: 'txtlog'
-        },
-        csv: {
-          folderName: 'csvLog'
+        dirPath: '',
+        after: {
+          //@ts-ignore
+          // info: (name, type, res) => console.info(`${name} has finished with\n${res}`)
         }
       },
-      (e, f, g, h) => this.consoleHandler(e, f, g, h)
+      (e, f, g, h) => this.fileHandler(e, f, g, h)
     )
   }
   private config: loggdemConfig[] = []
   private transports = []
+  private tmpArr = [
+    ['level', 'Message', 'Source', 'Date']
+  ]
   createLevel(name: string, config?: loggdemConfig, cb: (msg: any, filter: object) => void = (msg, filter) => this.configHandler(msg, arguments[0], filter)) {
     let cfg: loggdemConfig
     //@ts-ignore
@@ -214,7 +220,7 @@ export class loggdem {
 
 
   }
-  private tranportHandler(name: string, msg: any, filter: any) {
+  private async tranportHandler(name: string, msg: any, filter: any) {
     let tC = this.getTransport(name)
     let filtered = filter ? filterArray(tC.config, filter) : tC.config
     let levelAndfunc = filtered.map(x => x.level).flat()
@@ -222,15 +228,28 @@ export class loggdem {
     let typeMap = levelAndfunc.map(x => isObject(x) ? x.type : isString(x) ? x : '')
     typeMap = Array.from(new Set(typeMap))
     //@ts-ignore
-    let allowedConfig = this.getConfig().filter(x => typeMap.includes(x.level))
     if (levelAndfunc.length > 0) {
       for (let i = 0; i < levelAndfunc.length; i++) {
         const elem = levelAndfunc[i];
         //@ts-ignore
-        if (elem && isObject(elem) && elem.type && elem.cb && allowedConfig.length > 0) {
-          elem['cb'].apply(this, [msg, allowedConfig[0], filtered, tC.name])
+        if (elem && isObject(elem) && elem.type && elem.cb && this.getConfig(elem.type)) {
+          //@ts-ignore
+          let res1 = elem['cb'].apply(this, [msg, this.getConfig(elem.type), filtered, tC.name])
+          //@ts-ignore
+          if (res1 && elem.after && typeof elem.after == 'function') {
+            //@ts-ignore
+            elem.after.call(this, tC.name, elem.type, res1)
+          }
         } else if (elem && isString(elem) && this.getConfig(elem)) {
-          tC['cb'].apply(this, [msg, this.getConfig(elem), filtered, tC.name])
+          let res2 = tC['cb'].apply(this, [msg, this.getConfig(elem), filtered, tC.name])
+          if (res2 && filtered.map(x => x.after).length > 0 && isObject(filtered[0].after)) {
+            let objres = filtered[0].after
+            for (const [key, value] of Object.entries(objres)) {
+              if (key && value !== false && key == elem && typeof value == 'function') {
+                value.call(this, tC.name, elem, res2)
+              }
+            }
+          }
         }
       }
     }
@@ -245,7 +264,7 @@ export class loggdem {
     return name && isString(name) ?
       this.transports.find(x => x.name == name) : this.transports
   }
-  private configHandler(e: any, level: string, filter = {}) {
+  private async configHandler(e: any, level: string, filter = {}) {
     let t = this.getConfig(level)
     //@ts-ignore
     let transP = t.transports ? t.transports : {}
@@ -263,37 +282,38 @@ export class loggdem {
           const o = this.transports[i];
           if (o && o.name == key && value !== false && !f.includes(key)) {
             let b = o.config.map(x => x.level).flat()
-            if (b.length > 0) {
+            //@ts-ignore
+            if (b.length > 0 && b.map(x => isObject(x) ? x.type : isString(x) ? x : '').includes(level)) {
               for (let i = 0; i < b.length; i++) {
                 const elem = b[i];
-                // console.log('elem', elem)
                 //@ts-ignore
-                if (elem && isObject(elem) && elem.type && elem.cb && t) {
-                  elem['cb'].apply(this, [e, t, o.config, o.name])
-                } else if (elem && isString(elem) && this.getConfig(elem)) {
-                  console.log('hello')
-                  o['cb'].apply(this, [e, t, o.config, o.name])
+                if (elem && isObject(elem) && elem.type == level && elem.cb && this.getConfig(elem.type)) {
+                  //@ts-ignore
+                  let res1 = elem['cb'].apply(this, [e, this.getConfig(elem.type), o.config, o.name])
+                  //@ts-ignore
+                  if (res1 && elem.after && typeof elem.after == 'function') {
+                    //@ts-ignore
+                    elem.after.call(this, key, elem.type, res1)
+                  }
+                } else if (elem == level && isString(elem) && this.getConfig(elem)) {
+                  let res2 = o['cb'].apply(this, [e, this.getConfig(elem), o.config, o.name])
+                  if (res2 && o.config.map(x => x.after).length > 0 && isObject(o.config[0].after)) {
+                    let objres = o.config[0].after
+                    for (const [Okey, value] of Object.entries(objres)) {
+                      if (Okey && value !== false && Okey == level && typeof value == 'function') {
+                        value.call(this, key, elem, res2)
+                      }
+                    }
+                  }
                 }
               }
             }
-
-
           }
         }
       }
     }
-    return
   }
   private consoleHandler(e: any, f: any, config: any, transportName: string) {
-    let dL: any
-    let Lconfig = []
-    let Co: string | any[]
-    let typeMap, allowedConfig
-    let combined: any = {}
-
-    console.log('e', e)
-    console.log('f', f)
-    console.log('config', config)
 
     function manageConfig(objj: { useTable: any; level: any; color: any; tableProperties: any; dateFormat: any; }) {
       const { useTable, level, color, tableProperties, dateFormat } = objj
@@ -346,29 +366,13 @@ export class loggdem {
       return output
 
     }
-
-
+    let u = manageConfig(f)
+    console.log(u)
+    return u
   }
-  private fileHandler(e: any, f: any, config: any, transportName, transportNameConfig) {
-    let dL: any
-    let Lconfig = []
-    let Co: string | any[]
-
-    if (Array.isArray(config) && config) {
-      Co = config.map(x => x.level).flat()
-      if (Co.length > 0 && Array.isArray(f)) {
-        Lconfig = f.filter(x => Co.includes(x.level))
-      } else if (Co.length > 0 && !Array.isArray(f)) {
-        Lconfig.push(f)
-      } else {
-        //@ts-ignore
-        const { defaultLevel } = config
-        dL = 'info' || defaultLevel && isString(defaultLevel) ? defaultLevel : 'info'
-        Lconfig.push(this.getConfig('info'))
-      }
-    }
+  private fileHandler(e: any, f: any, config: any, transportName) {
     function manageConfig(objj: { useTable: any; level: any; color: any; tableProperties: any; dateFormat: any; }) {
-      const { useTable, level, color, tableProperties, dateFormat } = objj
+      const { level, dateFormat } = objj
       let onMissing = function (name: any) {
         return name;
       }
@@ -379,9 +383,48 @@ export class loggdem {
         Location: getLocation(),
         Date: moment().format(dateFormat)
       }
-
-      return { outp }
-
+      return outp
+    }
+    let arr = []
+    let res = manageConfig(f)
+    const defaultFilePath = './fileLog'
+    let baseD, fileName, linePrefix
+    let today: Date = new Date()
+    let _dateString = `${today.getFullYear()}-${(today.getMonth() + 1)}-${today.getDate()}`;
+    let _timeString = `${today.getHours()}:${today.getMinutes()}:${today.getSeconds()}`;
+    fileName = `${_dateString}.log`;
+    linePrefix = `[${_dateString} ${_timeString}]`;
+    const p = path.join(__dirname, defaultFilePath)
+    let fileConfig = Array.isArray(config) ? config : []
+    if (fileConfig.length > 0) {
+      baseD = fileConfig[0].dirPath ? fileConfig[0].dirPath : p
+      let tableConfig = {
+        columns: {
+          0: {
+            alignment: 'center',
+          },
+          1: {
+            alignment: 'center',
+          },
+          2: {
+            alignment: 'center',
+          },
+          3: {
+            alignment: 'center'
+          },
+        },
+      };
+      for (const [key, value] of Object.entries(res)) {
+        if (key && value) {
+          arr.push(value)
+        }
+      }
+      this.tmpArr.push(arr)
+      let o = table(this.tmpArr, tableConfig)
+      //console.log(o)
+      let writer = fs.createWriteStream(`${baseD}/${fileName}`, { flags: 'w' })
+      writer.write(o)
+      return res
     }
   }
 }

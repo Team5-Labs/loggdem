@@ -72,11 +72,15 @@ const boldify: (text: string) => string = (text: string) => {
 }
 const colorfy: (text: string, colour: string) => string = (text: string, colour: string) => {
   if (!colour) {
-    throw new Error('Colour not specified')
+    colour = 'white'
   }
   if (!text) {
     throw new Error('No text specified')
   }
-  return chalk['hex'](checkColor(colour))['bold'](text)
+  try {
+    return chalk['hex'](checkColor(colour))['bold'](text)
+  } catch (error) {
+    console.log(error)
+  }
 }
 export { filterArray, jsonify, checkColor, boldify, colorfy }

@@ -16,7 +16,12 @@ const getLocation = (stepInStack: number = 2) => {
     // }
     let trace = Stacktrace.parse(e)
     let currTrace = trace.find(x => x.functionName == null && x.methodName == null && x.typeName == 'Object')
-    return `${currTrace.fileName}:${currTrace.lineNumber}:${currTrace.columnNumber}`
+    try {
+      return `${currTrace.fileName}:${currTrace.lineNumber}:${currTrace.columnNumber}`
+    } catch (error) {
+      let t = trace[trace.length - 2]
+      return `${t.fileName}:${t.lineNumber}:${t.columnNumber}`
+    }
   }
 };
 
