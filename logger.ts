@@ -1,28 +1,24 @@
-////@ts-nocheck
+//@ts-nocheck
 import moment from "moment";
 import { emojify } from "node-emoji";
 import { table } from "table";
-import { isObject, isString } from "lodash"
 import { loggdemConfig } from "./interface";
 import { getLocation } from "./location";
 import colorize from 'json-colorizer';
-import * as jsonfile from 'jsonfile'
 import * as path from 'path'
 import fs from 'fs-extra'
-import { boldify, checkColor, colorfy, filterArray, jsonify } from "./utils";
-import { AsyncParser, parseAsync } from "json2csv";
-import { Table } from "console-table-printer";
-
+import { boldify, checkColor, colorfy, filterArray, isArray, isObject, isString, jsonify } from "./utils";
 export class loggdem {
   constructor() {
     this.createLevel('info',
       {
-        color: 'royalblue', useTable: true, dateFormat: '',
+        color: 'royalblue', useTable: false, dateFormat: '',
         transports: {
           //http: true,
           //@ts-ignore
           file: true,
-          console: true
+          console: true,
+          f: true
         },
       },
       (e, g) => this.configHandler(e, 'info', g))
@@ -43,7 +39,7 @@ export class loggdem {
         color: 'orange',
         useTable: true,
         transports: {
-          //file: true,
+          file: true,
           //  http: true,
           console: true
         },
@@ -71,22 +67,26 @@ export class loggdem {
           type: 'info',
           after: (name, type, res) => console.log('after', `${name} has finished with\n${type}`),
           cb: (e, f, g, h) => this.consoleHandler(e, f, g, h)
-        }, 'debugs', 'fatal'],
+        }, 'debug', 'fatal'],
         defaultLevel: 'info',
+        group: ['five'],
+        env: 'prods',
         after: {
           debug: (name, type, res) => console.log('after2', `${name} has finished with\n${type}`),
         },
       },
-      (e, f, g, h) => this.consoleHandler(e, f, g, h)
+      // (e, f, g, h) => this.consoleHandler(e, f, g, h)
     )
     this.createTransport('file',
       {
-        level: ['info', 'debugs'],
+        level: ['info', 'debug'],
         defaultLevel: 'info',
         dirPath: '',
+        env: 'prod',
+        group: ['five'],
         after: {
           //@ts-ignore
-          // info: (name, type, res) => console.info(`${name} has finished with\n${res}`)
+          info: (name, type, res) => console.info(`${name} has finished with\n${res}`)
         }
       },
       (e, f, g, h) => this.fileHandler(e, f, g, h)
@@ -94,9 +94,10 @@ export class loggdem {
   }
   private config: loggdemConfig[] = []
   private transports = []
-  private tmpArr = [
+  private tmpArrDisplay = [
     ['level', 'Message', 'Source', 'Date']
   ]
+  private tmpArrJson = []
   createLevel(name: string, config?: loggdemConfig, cb: (msg: any, filter: object) => void = (msg, filter) => this.configHandler(msg, arguments[0], filter)) {
     let cfg: loggdemConfig
     //@ts-ignore
@@ -144,19 +145,17 @@ export class loggdem {
     }
     this.config.push(cfg)
   }
-  createTransport(name: string, config?: object | Array<object>, cb: (msg: any, LevelConfigs: any, TransportConfig: any, TransportName: string) => any = (msg, LevelConfigs, TransportConfig, TransportName) => { }) {
-    let cfg: { level: string[]; defaultLevel: string; TransportName?: string }, transP: object
+  createTransport(name: string, config?: object | Array<object>, cb: (msg: any, LevelConfigs: any, TransportConfig: any, transportName: string) => any = (msg, LevelConfigs, TransportConfig, transportName) => { }) {
+    let cfg: { level: string[]; defaultLevel: string; transportName?: string }, transP: object
     let cfgArray = []
     cfg = { level: ['info', 'error', 'fatal', 'debug'], defaultLevel: 'info' }
     transP = {}
-    if (Array.isArray(config)) {
-      cfgArray = Array.from(config)
-    } else if (isObject(config)) {
+    if (isObject(config)) {
       Object.assign(cfg, config)
-      cfg.TransportName = name
+      cfg.transportName = name
       cfgArray.push(cfg)
     } else {
-      throw new Error('Config must be an Array or Object')
+      throw new Error('Config must be an Object')
     }
 
     if (!cb || typeof cb !== 'function') {
@@ -181,19 +180,18 @@ export class loggdem {
 
   }
   setTransport(name: string, config?: object | Array<object>, cb: (e: any, f: any, g: any, h: any) => any = (e, f, g, h) => this.consoleHandler(e, f, g, h)) {
-    let cfg: { level: string[]; defaultLevel: string; TransportName?: string }, transP: object
+    let cfg: { level: string[]; defaultLevel: string; transportName?: string }, transP: object
     let cfgArray = []
     cfg = { level: ['info', 'error', 'fatal', 'debug'], defaultLevel: 'info' }
     transP = {}
-    if (Array.isArray(config)) {
-      cfgArray = Array.from(config)
-    } else if (isObject(config)) {
+    if (isObject(config)) {
       Object.assign(cfg, config)
-      cfg.TransportName = name
+      cfg.transportName = name
       cfgArray.push(cfg)
     } else {
-      throw new Error('Config must be an Array or Object')
+      throw new Error('Config must be an Object')
     }
+
     if (!cb || typeof cb !== 'function') {
       throw new Error('Callback must be a function')
     }
@@ -233,15 +231,15 @@ export class loggdem {
         const elem = levelAndfunc[i];
         //@ts-ignore
         if (elem && isObject(elem) && elem.type && elem.cb && this.getConfig(elem.type)) {
-          //@ts-ignore
-          let res1 = elem['cb'].apply(this, [msg, this.getConfig(elem.type), filtered, tC.name])
-          //@ts-ignore
+          let result = this.manageConfig(msg, this.getConfig(elem.type), filtered, tC.name)
+          //let res1 = elem['cb'].apply(this, [msg, this.getConfig(elem.type), filtered, tC.name])
+          let res1 = elem['cb'].apply(this, [result])
           if (res1 && elem.after && typeof elem.after == 'function') {
-            //@ts-ignore
             elem.after.call(this, tC.name, elem.type, res1)
           }
         } else if (elem && isString(elem) && this.getConfig(elem)) {
-          let res2 = tC['cb'].apply(this, [msg, this.getConfig(elem), filtered, tC.name])
+          let result = this.manageConfig(msg, this.getConfig(elem), filtered, tC.name)
+          let res2 = tC['cb'].apply(this, [result])
           if (res2 && filtered.map(x => x.after).length > 0 && isObject(filtered[0].after)) {
             let objres = filtered[0].after
             for (const [key, value] of Object.entries(objres)) {
@@ -266,67 +264,136 @@ export class loggdem {
   }
   private async configHandler(e: any, level: string, filter = {}) {
     let t = this.getConfig(level)
-    //@ts-ignore
+    if (!e) {
+      return 'Message is missing'
+    }
+    if (typeof e !== 'string') {
+      //throw new Error('Message must be a string')
+      e = String(e)
+    }
     let transP = t.transports ? t.transports : {}
-    let f: string | string[]
-    //@ts-ignore
-    if (filter && filter.exclude && Array.isArray(filter.exclude)) {
-      //@ts-ignore
-      f = filter.exclude
+    let f: any[] = []
+    if (filter && isObject(filter)) {
+      f = filter
     } else {
-      f = []
+      f = {}
+    }
+    let transportNames = this.transports.map(x => x.name)
+    function isLevelPresent(array, l) {
+      return array.map(x => x.level).flat().map(x => isObject(x) ? x.type : isString(x) ? x : '').includes(l)
     }
     for (const [key, value] of Object.entries(transP)) {
-      if (key && value !== false) {
-        for (let i = 0; i < this.transports.length; i++) {
-          const o = this.transports[i];
-          if (o && o.name == key && value !== false && !f.includes(key)) {
-            let b = o.config.map(x => x.level).flat()
-            //@ts-ignore
-            if (b.length > 0 && b.map(x => isObject(x) ? x.type : isString(x) ? x : '').includes(level)) {
-              for (let i = 0; i < b.length; i++) {
-                const elem = b[i];
-                //@ts-ignore
-                if (elem && isObject(elem) && elem.type == level && elem.cb && this.getConfig(elem.type)) {
-                  //@ts-ignore
-                  let res1 = elem['cb'].apply(this, [e, this.getConfig(elem.type), o.config, o.name])
-                  //@ts-ignore
-                  if (res1 && elem.after && typeof elem.after == 'function') {
-                    //@ts-ignore
-                    elem.after.call(this, key, elem.type, res1)
-                  }
-                } else if (elem == level && isString(elem) && this.getConfig(elem)) {
-                  let res2 = o['cb'].apply(this, [e, this.getConfig(elem), o.config, o.name])
-                  if (res2 && o.config.map(x => x.after).length > 0 && isObject(o.config[0].after)) {
-                    let objres = o.config[0].after
-                    for (const [Okey, value] of Object.entries(objres)) {
-                      if (Okey && value !== false && Okey == level && typeof value == 'function') {
-                        value.call(this, key, elem, res2)
-                      }
-                    }
+      // console.time(`${key}`)
+      if (transportNames.includes(key) && value !== false && e) {
+        //console.log('t', transportNames.includes(key), transportNames, key)
+        const { config, name, cb } = this.getTransport(key)
+
+        let newConfig = filterArray(config, f)
+        let nTc = config.map(x => x.level).flat()
+        if (newConfig.length > 0 && isLevelPresent(newConfig, level)) {
+          let index = nTc.findIndex(x => isObject(x) && x.type ? x.type == level : isString(x) ? x == level : '' == level)
+          if (index !== -1) {
+            let tC = nTc[index]
+            if (isObject(tC) && tC['cb'] && typeof tC['cb'] == 'function') {
+              let res = this.manageConfig(e, this.getConfig(level), config, name)
+              let result = tC['cb'].apply(this, [res])
+              if (result && tC.after && typeof tC.after == 'function') {
+                tC['after'].call(this, key, level, result)
+              }
+            } else if (typeof cb == 'function') {
+              let res = this.manageConfig(e, this.getConfig(level), config, name)
+              let result = cb.apply(this, [res])
+              if (result && config.map(x => x.after).length > 0 && isObject(config[0].after)) {
+                let objres = config[0].after
+                for (const [Okey, value] of Object.entries(objres)) {
+                  if (Okey && value !== false && Okey == level && typeof value == 'function') {
+                    value.call(this, key, level, result)
                   }
                 }
               }
             }
           }
+          // console.timeEnd(`${key}`)
         }
+
       }
     }
-  }
-  private consoleHandler(e: any, f: any, config: any, transportName: string) {
 
-    function manageConfig(objj: { useTable: any; level: any; color: any; tableProperties: any; dateFormat: any; }) {
-      const { useTable, level, color, tableProperties, dateFormat } = objj
+    // for (const [key, value] of Object.entries(transP)) {
+    //   //const element = array[index];
+
+    //   for (let i = 0; i < this.transports.length; i++) {
+    //     const o = this.transports[i];
+    //     console.time(`${o.name}`)
+    //     let tC = o.config
+    //     let b = o.config.map(x => x.level).flat()
+    //     if (o && o.name == key && value !== false) {
+    //       //@ts-ignore
+    //       if (b.length > 0 && b.map(x => isObject(x) ? x.type : isString(x) ? x : '').includes(level)) {
+    //         for (let i = 0; i < b.length; i++) {
+    //           const elem = b[i];
+    //           //@ts-ignore
+    //           if (elem && isObject(elem) && elem.type == level && elem.cb && this.getConfig(elem.type)) {
+    //             //@ts-ignore
+    //             let res1 = elem['cb'].apply(this, [e, this.getConfig(elem.type), o.config, o.name])
+    //             //@ts-ignore
+    //             if (res1 && elem.after && typeof elem.after == 'function') {
+    //               //@ts-ignore
+    //               elem.after.call(this, key, elem.type, res1)
+    //             }
+    //           } else if (elem == level && isString(elem) && this.getConfig(elem)) {
+    //             let res2 = o['cb'].apply(this, [e, this.getConfig(elem), o.config, o.name])
+    //             if (res2 && o.config.map(x => x.after).length > 0 && isObject(o.config[0].after)) {
+    //               let objres = o.config[0].after
+    //               for (const [Okey, value] of Object.entries(objres)) {
+    //                 if (Okey && value !== false && Okey == level && typeof value == 'function') {
+    //                   value.call(this, key, elem, res2)
+    //                 }
+    //               }
+    //             }
+    //           }
+    //         }
+    //       }
+    //     }
+
+    //     console.timeEnd(`${o.name}`)
+    //   }
+    // }
+
+  }
+  manageConfig(e: any, levelConfig: any, transportConfig: any, transportName: string) {
+    const { level, dateFormat } = levelConfig
+    let onMissing = function (name: any) {
+      return name;
+    }
+    e = emojify(e, onMissing)
+
+    let output = {
+      LEVEL: level.toUpperCase(),
+      Message: e,
+      Location: getLocation(),
+      Date: moment().format(dateFormat)
+    }
+
+    levelConfig['color'] = checkColor(levelConfig['color'] ? levelConfig['color'] : 'white')
+    return { output, levelConfig, transportConfig, transportName }
+
+  }
+  private consoleHandler(obj) {
+    const { output, levelConfig } = obj
+    function consoleLogger(output, levelConfig) {
+      const { color, useTable, tableProperties } = levelConfig
       let onMissing = function (name: any) {
         return name;
       }
-      e = emojify(e, onMissing)
-      var output: string
+      let result;
+      output['Message'] = emojify(output['Message'], onMissing)
+      let data = [
+        [boldify('level'), boldify('Message'), boldify('Source'), boldify('Date')],
+        // [colorfy(level.toUpperCase(), color), e, getLocation(), moment().format(dateFormat)],
+      ]
       if (useTable && useTable == true) {
-        let data = [
-          [boldify('level'), boldify('Message'), boldify('Source'), boldify('Date')],
-          [colorfy(level.toUpperCase(), color), e, getLocation(), moment().format(dateFormat)],
-        ]
+        let tmpA = []
         let tableConfig = {
           columns: {
             0: {
@@ -344,16 +411,14 @@ export class loggdem {
           },
           ...tableProperties
         };
-
-        output = table(data, tableConfig);
-      } else {
-        let outp = {
-          LEVEL: level.toUpperCase(),
-          Message: e,
-          Location: getLocation(),
-          Date: moment().format(dateFormat)
+        output['LEVEL'] = colorfy(output['LEVEL'], levelConfig['color'])
+        for (const [key, value] of Object.entries(output)) {
+          tmpA.push(value)
         }
-        let j = jsonify(outp)
+        data.push(tmpA)
+        result = table(data, tableConfig)
+      } else {
+        let j = jsonify(output)
         let r = colorize(j, {
           colors: {
             // STRING_KEY: color,
@@ -361,32 +426,18 @@ export class loggdem {
             NUMBER_LITERAL: color
           }, pretty: true
         })
-        output = r
+        result = r
       }
-      return output
-
+      return result
     }
-    let u = manageConfig(f)
+    let u = consoleLogger(output, levelConfig)
     console.log(u)
     return u
   }
-  private fileHandler(e: any, f: any, config: any, transportName) {
-    function manageConfig(objj: { useTable: any; level: any; color: any; tableProperties: any; dateFormat: any; }) {
-      const { level, dateFormat } = objj
-      let onMissing = function (name: any) {
-        return name;
-      }
-      e = emojify(e, onMissing)
-      let outp = {
-        LEVEL: level.toUpperCase(),
-        Message: e,
-        Location: getLocation(),
-        Date: moment().format(dateFormat)
-      }
-      return outp
-    }
+  private fileHandler(obj) {
+    const { output, transportConfig } = obj
     let arr = []
-    let res = manageConfig(f)
+    let res = output
     const defaultFilePath = './fileLog'
     let baseD, fileName, linePrefix
     let today: Date = new Date()
@@ -395,7 +446,7 @@ export class loggdem {
     fileName = `${_dateString}.log`;
     linePrefix = `[${_dateString} ${_timeString}]`;
     const p = path.join(__dirname, defaultFilePath)
-    let fileConfig = Array.isArray(config) ? config : []
+    let fileConfig = isArray(transportConfig) ? transportConfig : []
     if (fileConfig.length > 0) {
       baseD = fileConfig[0].dirPath ? fileConfig[0].dirPath : p
       let tableConfig = {
@@ -419,9 +470,8 @@ export class loggdem {
           arr.push(value)
         }
       }
-      this.tmpArr.push(arr)
-      let o = table(this.tmpArr, tableConfig)
-      //console.log(o)
+      this.tmpArrDisplay.push(arr)
+      let o = table(this.tmpArrDisplay, tableConfig)
       let writer = fs.createWriteStream(`${baseD}/${fileName}`, { flags: 'w' })
       writer.write(o)
       return res

@@ -1,14 +1,40 @@
 import chalk from "chalk";
 
+const getValue = value => (typeof value === 'string' ? value.toUpperCase() : value);
+
 function filterArray(array: any[], filters: { [x: string]: (arg0: any) => unknown; }) {
   const filterKeys = Object.keys(filters);
   return array.filter((item: { [x: string]: any; }) => {
     return filterKeys.every(key => {
 
-      if (typeof filters[key] !== 'function') return true;
+      if (!filters[key]) return true;
+
+      if (typeof filters[key] !== 'function') {
+        if (!filters[key].length) return true;
+
+        if (isArray(filters[key])) {
+          //@ts-ignore
+          return filters[key].find(filter => getValue(filter) === getValue(item[key]));
+        } else if (isString(filters[key])) {
+          //@ts-ignore
+          return filters[key] === item[key]
+        }
+      }
       return filters[key](item[key]);
     });
   });
+}
+
+function isObject(e) {
+  return e && e.constructor.name === 'Object'
+}
+
+function isArray(e) {
+  return e && e.constructor.name === 'Array'
+}
+
+function isString(e) {
+  return e && e.constructor.name === 'String'
 }
 
 const jsonify: (obj: object) => string = (obj: object) => {
@@ -83,4 +109,4 @@ const colorfy: (text: string, colour: string) => string = (text: string, colour:
     console.log(error)
   }
 }
-export { filterArray, jsonify, checkColor, boldify, colorfy }
+export { filterArray, isObject, isString, isArray, jsonify, checkColor, boldify, colorfy }
